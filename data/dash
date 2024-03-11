@@ -1,0 +1,113 @@
+from dash import Dash, dcc, html, Input, Output, callback
+from plotly.express import data
+import math
+import pandas as pd
+pd.options.plotting.backend = "plotly"
+
+options = ['All', 'Major', 'Minor', 'Multiple']
+numbering_options = ['All', 'Opus Numbers', 'Works without Opus Numbers', 'Hess Catalogue', 'Anhang']
+
+map={
+                'C major': '#ff0f00',
+                'D major': '#ff5002',
+                'E major': '#ff7503',
+                'E♭ major': '#ff9e12',
+                'F major': '#ffba25',
+                'F♯ major': '#fed03f',
+                'G major': '#fee36a',
+                'A major': '#fdef9c',
+                'A♭ major': '#fef4ba',
+                'B♭ major': '#fffada',
+                
+                'C minor' : '#262247',
+                'C♯ minor' : '#2a285a',
+                'D minor' : '#2b2d6c',
+                'E minor' : '#273484',
+                'F minor' : '#214097',
+                'G minor' : '#2052a3',
+                'A minor' : '#215da8',
+                'B minor' : '#2465a9',
+                
+                'Multiple' : 'black'}
+
+df = pd.read_csv('full2.csv', sep=';')
+dur = df.Duration.apply(lambda x: float(x.replace(',', '.')))
+df = df.assign(Duration = dur)
+dif = df.Difficulty.apply(lambda x: float(x.replace(',', '.')))
+df = df.assign(Difficulty = dif)
+
+def replace_nan(x, str):
+    if pd.isnull(x):
+        return str
+    else:
+        return x
+
+pub = df.Published.apply(lambda x: replace_nan(x, '?'))
+df = df.assign(Published = pub)
+alt = df.Alternative.apply(lambda x: replace_nan(x, ''))
+df = df.assign(Alternative = alt)
+
+key_ordered = map.keys()
+
+key_selection = ''
+opus_selection = ''
+
+hovertext = '%{customdata[2]}: %{customdata[0]}<br><b>%{customdata[1]}</b><br>Published: %{x}<br>Difficulty: %{y}<br>Duration: %{customdata[3]} min'
+
+def plot(df):
+    fig = df.plot.scatter(x="Published", y="Difficulty", size="Duration", color='Key', custom_data=['Title', 'Alternative', 'Opus', 'Duration'],
+                          color_discrete_map=map, size_max=50, category_orders={'Key': key_ordered},
+                          height=600)
+    fig.update_traces(hovertemplate=hovertext)
+    fig.update_xaxes(categoryorder='category ascending')
+    fig.update_layout(plot_bgcolor='#bcc3e6', legend_traceorder="normal", legend_orientation='h', legend_entrywidth=90, legend_title_text='Key') 
+    return fig
+
+app = Dash(__name__)
+app.layout = html.Div([
+    html.Div(["Solo piano works by Ludwig van Beethoven"], style={'fontFamily': 'Arial', 'fontSize': 20, 'textAlign' : 'center', 'padding': 10}),
+    html.Div(children=[
+    html.Div([
+        "Filter by key: ",
+        dcc.Dropdown(options, 'All', id='key_dropdown', clearable=False)
+    ], style={'padding': 10, 'flex': 1}),
+    html.Div([
+        "Filter by numbering: ",
+        dcc.Dropdown(numbering_options, 'All', id='number_dropdown', clearable=False)
+    ], style={'padding': 10, 'flex': 1})
+    ], style={'display': 'flex', 'flexDirection': 'row', 'fontFamily': 'Arial'}),
+    dcc.Graph(figure=plot(df), id='graph')
+])
+
+
+@callback(
+    Output('graph', 'figure'),
+    Input('key_dropdown', 'value'),
+    Input('number_dropdown', 'value')
+)
+def update_selection(key_value, number_value):
+    if key_value != 'All':
+        if key_value == 'Major':
+            selected = df.loc[df['Key'].str.contains('major')]
+        elif key_value == 'Minor':
+            selected = df.loc[df['Key'].str.contains('minor')]
+        else:
+            selected = df.loc[df['Key'].str.contains('Multiple')]
+    else:
+        selected = df
+    
+    if number_value != 'All':
+        if number_value == 'Anhang':
+            selected = selected.loc[selected['Opus'].str.contains('A')]
+        elif number_value == 'Hess Catalogue':
+            selected = selected.loc[selected['Opus'].str.contains('H')]
+        elif number_value == 'Works without Opus Numbers':
+            selected = selected.loc[selected['Opus'].str.contains('W')]
+        else:
+            selected = selected.loc[~selected['Opus'].str.contains('A|H|W')]
+
+    return plot(selected)
+ 
+
+if __name__ == '__main__':
+    app.run(debug=True)
